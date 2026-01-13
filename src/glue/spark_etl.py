@@ -6,7 +6,7 @@ from awsglue.context import GlueContext
 from awsglue.job import Job
 from pyspark.sql.functions import col, current_date, avg
 
-args = getResolvedOptions(sys.argv, ['JOB_NAME', 'BUCKET_NAME', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'REDSHIFT_WORKGROUP'])
+args = getResolvedOptions(sys.argv, ['JOB_NAME', 'BUCKET_NAME', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'REDSHIFT_WORKGROUP','aws_region'])
 
 sc = SparkContext()
 glueContext = GlueContext(sc)

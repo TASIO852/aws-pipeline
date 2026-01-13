@@ -72,6 +72,7 @@ resource "aws_glue_job" "etl" {
     "--DB_USER"            = var.db_user
     "--DB_PASSWORD"        = var.db_password
     "--DB_NAME"            = "dev" # Database default do Redshift Serverless
+    "--aws_region"          = "us-east-1"
   }
 }
 

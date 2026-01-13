@@ -62,10 +62,6 @@ Os dados da Gold são carregados via driver JDBC para o **Redshift Serverless**.
 
 Implementada via **AWS IAM**. Criamos Roles específicas no arquivo `iam.tf` seguindo o **Princípio do Privilégio Mínimo**, garantindo que o Lambda só escreva na Bronze e o Glue só acesse o necessário.
 
-### Data Catalog (Catálogo de Dados)
-
-Utilizamos o **AWS Glue Data Catalog**. Ele armazena os metadados e esquemas das tabelas, permitindo que os dados sejam descobertos e consultados via SQL através do Amazon Athena.
-
 ### Data Lineage (Linhagem)
 
 A linhagem é garantida pela separação física das camadas no S3. É possível rastrear um registro na Gold voltando para a Silver e encontrando seu arquivo original na Bronze.
