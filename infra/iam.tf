@@ -94,7 +94,7 @@ resource "aws_iam_role_policy_attachment" "glue_s3_attach" {
   policy_arn = aws_iam_policy.glue_s3_policy.arn
 }
 
-# NOVA POLÍTICA: Permite ao Glue usar a Data API para carregar o Redshift
+# Política ATUALIZADA para permitir que o Glue use a Data API e pegue credenciais
 resource "aws_iam_policy" "glue_redshift_data_api" {
   name        = "${var.project_name}-glue-redshift-data"
   description = "Permite que o Glue envie comandos SQL para o Redshift Serverless"
@@ -107,7 +107,8 @@ resource "aws_iam_policy" "glue_redshift_data_api" {
         Action = [
           "redshift-data:ExecuteStatement",
           "redshift-data:DescribeStatement",
-          "redshift-data:GetStatementResult"
+          "redshift-data:GetStatementResult",
+          "redshift-serverless:GetCredentials" # <--- ESSA LINHA É A QUE FALTOU
         ]
         Resource = "*"
       },
@@ -122,7 +123,6 @@ resource "aws_iam_policy" "glue_redshift_data_api" {
     ]
   })
 }
-
 resource "aws_iam_role_policy_attachment" "glue_redshift_data_attach" {
   role       = aws_iam_role.glue_role.name
   policy_arn = aws_iam_policy.glue_redshift_data_api.arn
