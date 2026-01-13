@@ -1,9 +1,10 @@
 # --- 1. S3 Bucket (Data Lake) ---
 resource "aws_s3_bucket" "datalake" {
-  bucket = "${var.project_name}-datalake-${var.environment}"
-  force_destroy = true # Permite destruir o bucket mesmo com arquivos (CUIDADO em prod)
+  bucket        = "${var.project_name}-datalake-${var.environment}"
+  force_destroy = true 
 }
 
+# Upload do script Spark com detecção de alteração (etag)
 resource "aws_s3_object" "glue_script" {
   bucket = aws_s3_bucket.datalake.id
   key    = "scripts/spark_etl.py"
@@ -34,31 +35,66 @@ resource "aws_lambda_function" "ingestion" {
   }
 }
 
-# --- 3. Redshift Serverless (Gold) ---
-# Nota: Redshift Serverless precisa de uma VPC configurada. 
-# Para simplificar o teste, usaremos a default, mas em prod crie uma VPC.
+# --- 3. Networking & Security (Redshift Access) ---
+data "aws_vpc" "default" {
+  default = true
+}
+
+# Busca todas as subnets da VPC padrão
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
+# Security Group para abrir a porta do Redshift para o mundo (necessário para o Glue)
+resource "aws_security_group" "redshift_sg" {
+  name        = "${var.project_name}-redshift-sg"
+  description = "Permite acesso ao Redshift vindo do Glue"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    description = "Porta padrao Redshift"
+    from_port   = 5439
+    to_port     = 5439
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"] # Permite que o Glue conecte via IP publico
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# --- 4. Redshift Serverless ---
 resource "aws_redshiftserverless_namespace" "namespace" {
   namespace_name      = "${var.project_name}-namespace"
   admin_username      = var.db_user
-  admin_user_password = var.db_password # Certifique-se que o nome da variável está correto aqui
+  admin_user_password = var.db_password
   iam_roles           = [aws_iam_role.redshift_role.arn]
 }
 
 resource "aws_redshiftserverless_workgroup" "workgroup" {
-  workgroup_name = "${var.project_name}-workgroup"
-  namespace_name = aws_redshiftserverless_namespace.namespace.namespace_name
-  base_capacity  = 8 # Mínimo para testes
+  workgroup_name      = "${var.project_name}-workgroup"
+  namespace_name      = aws_redshiftserverless_namespace.namespace.namespace_name
+  base_capacity       = 8
   
-  # Subnets e Security Groups devem ser configurados aqui para acesso via Glue
-  # config_parameter { ... } 
+  # Configuracoes cruciais para acesso externo
+  publicly_accessible = true 
+  security_group_ids  = [aws_security_group.redshift_sg.id]
+  subnet_ids          = data.aws_subnets.default.ids
 }
 
-# --- 4. AWS Glue Job (Silver & Gold) ---
+# --- 5. AWS Glue Job (ETL Silver & Gold) ---
 resource "aws_glue_job" "etl" {
-  name     = "${var.project_name}-etl-silver-gold"
-  role_arn = aws_iam_role.glue_role.arn
-  glue_version = "4.0"
-  worker_type  = "G.1X"
+  name              = "${var.project_name}-etl-silver-gold"
+  role_arn          = aws_iam_role.glue_role.arn
+  glue_version      = "4.0"
+  worker_type       = "G.1X"
   number_of_workers = 2
 
   command {
@@ -67,23 +103,25 @@ resource "aws_glue_job" "etl" {
   }
 
   default_arguments = {
-    "--BUCKET_NAME"        = aws_s3_bucket.datalake.id
-    "--REDSHIFT_WORKGROUP" = aws_redshiftserverless_workgroup.workgroup.workgroup_name
-    "--DB_USER"            = var.db_user
-    "--DB_PASSWORD"        = var.db_password
-    "--DB_NAME"            = "dev" # Database default do Redshift Serverless
+    "--BUCKET_NAME"         = aws_s3_bucket.datalake.id
+    "--REDSHIFT_WORKGROUP"  = aws_redshiftserverless_workgroup.workgroup.workgroup_name
+    "--DB_USER"             = var.db_user
+    "--DB_PASSWORD"         = var.db_password
+    "--DB_NAME"             = "dev"
     "--aws_region"          = "us-east-1"
+    "--tempDir"             = "s3://${aws_s3_bucket.datalake.id}/temp/"
+    "--extra-jars"          = "https://s3.amazonaws.com/redshift-downloads/drivers/jdbc/2.1.0.9/redshift-jdbc42-2.1.0.9.jar"
   }
 }
 
-# --- 5. Step Functions (Orquestrador) ---
+# --- 6. Step Functions (Orquestrador) ---
 resource "aws_sfn_state_machine" "pipeline_orchestrator" {
   name     = "${var.project_name}-orchestrator"
   role_arn = aws_iam_role.step_functions_role.arn
 
   definition = <<EOF
 {
-  "Comment": "Orquestração do Pipeline de Dados Agrin",
+  "Comment": "Orquestracao do Pipeline de Dados Agrin",
   "StartAt": "IngestaoBronzeLambda",
   "States": {
     "IngestaoBronzeLambda": {
