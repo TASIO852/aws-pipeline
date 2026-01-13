@@ -38,10 +38,10 @@ resource "aws_lambda_function" "ingestion" {
 # Nota: Redshift Serverless precisa de uma VPC configurada. 
 # Para simplificar o teste, usaremos a default, mas em prod crie uma VPC.
 resource "aws_redshiftserverless_namespace" "namespace" {
-  namespace_name = "${var.project_name}-namespace"
-  admin_username = var.db_user
-  admin_user_password = var.db_password
-  iam_roles = [aws_iam_role.redshift_role.arn]
+  namespace_name      = "${var.project_name}-namespace"
+  admin_username      = var.db_user
+  admin_user_password = var.db_password # Certifique-se que o nome da variável está correto aqui
+  iam_roles           = [aws_iam_role.redshift_role.arn]
 }
 
 resource "aws_redshiftserverless_workgroup" "workgroup" {

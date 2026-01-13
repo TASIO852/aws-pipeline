@@ -28,28 +28,34 @@ df_silver = df_bronze.select(
     col("main.humidity").alias("umidade"),
     col("weather")[0]["description"].alias("condicao"),
     current_date().alias("data_processamento")
-).dropDuplicates()
+).dropDuplicates() # Remover duplicatas dataquality
 
 # Escrever na Silver (Parquet) [cite: 15]
 silver_path = f"s3://{bucket_name}/datalake/silver/"
 df_silver.write.mode("overwrite").parquet(silver_path)
 
-# --- CAMADA GOLD (Agregação para Redshift) ---
-# Exemplo de agregação: Média de temperatura por cidade
+# --- CAMADA GOLD (Agregação e Persistência no S3) ---
+# Exemplo de agregação
 df_gold = df_silver.groupBy("cidade", "data_processamento") \
     .agg(avg("temperatura").alias("temp_media"), avg("umidade").alias("umidade_media"))
 
-# Escrever no Redshift Serverless (JDBC)
-# Nota: Em um ambiente real, deve-se configurar a conexão JDBC no Glue Connection ou Secrets Manager
-# Este é um exemplo simplificado de escrita direta via conector Spark-Redshift
+# 1. Salvar primeiro no S3 (Camada Gold) em Parquet
+gold_path = f"s3://{bucket_name}/datalake/gold/"
+df_gold.write.mode("overwrite").parquet(gold_path)
+
+# --- CARGA PARA REDSHIFT (Consumindo da Gold) ---
+# Agora lemos da Gold para garantir a integridade do Data Lake
+df_to_redshift = spark.read.parquet(gold_path)
+
 jdbc_url = f"jdbc:redshift://{args['REDSHIFT_WORKGROUP']}.{args['aws_region']}.redshift-serverless.amazonaws.com:5439/{args['DB_NAME']}"
 
-df_gold.write \
+df_to_redshift.write \
     .format("jdbc") \
     .option("url", jdbc_url) \
     .option("dbtable", "public.clima_diario_gold") \
     .option("user", args['DB_USER']) \
     .option("password", args['DB_PASSWORD']) \
+    .option("tempdir", f"s3://{bucket_name}/temp/redshift") \
     .mode("append") \
     .save()
 
